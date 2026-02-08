@@ -61,12 +61,17 @@ async function searchImages(query) {
         // Using a Bing Scraper fallback which is generally more permissive for demo purposes
         const bingUrl = `https://www.bing.com/images/async?q=${encodeURIComponent(query)}&first=0&count=10&mmasync=1`;
 
-        // Add 3s timeout to prevent hanging
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        // Add 3s timeout to prevent hanging (if supported)
+        let signal;
+        let timeoutId;
+        if (typeof AbortController !== 'undefined') {
+            const controller = new AbortController();
+            timeoutId = setTimeout(() => controller.abort(), 3000);
+            signal = controller.signal;
+        }
 
-        const response = await fetch(bingUrl, { headers, signal: controller.signal });
-        clearTimeout(timeoutId);
+        const response = await fetch(bingUrl, { headers, signal });
+        if (timeoutId) clearTimeout(timeoutId);
 
         if (!response.ok) throw new Error(`Bing returned ${response.status}`);
 
