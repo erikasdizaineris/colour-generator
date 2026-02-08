@@ -68,6 +68,8 @@ async function searchImages(query) {
         const response = await fetch(bingUrl, { headers, signal: controller.signal });
         clearTimeout(timeoutId);
 
+        if (!response.ok) throw new Error(`Bing returned ${response.status}`);
+
         const html = await response.text();
 
         // Bing typically puts images in murl or similar.
