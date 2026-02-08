@@ -1,18 +1,33 @@
 import fetch from 'node-fetch';
-import getPixels from 'get-pixels';
+import sharp from 'sharp';
 import quantize from 'quantize';
-import { promisify } from 'util';
-
-const getPixelsAsync = promisify(getPixels);
 
 // Helper to get dominant color from an image URL
 async function getDominantColor(url) {
     try {
-        const pixels = await getPixelsAsync(url);
-        const data = pixels.data;
-        const pixelCount = data.length / 4;
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+            }
+        });
 
+        if (!response.ok) {
+            throw new Error(`Image fetch failed: ${response.status}`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        // Downscale to keep processing lightweight while preserving dominant color.
+        const { data, info } = await sharp(buffer)
+            .resize({ width: 180, height: 180, fit: 'inside', withoutEnlargement: true })
+            .ensureAlpha()
+            .raw()
+            .toBuffer({ resolveWithObject: true });
+
+        const pixelCount = info.width * info.height;
         const pixelArray = [];
+
         // Sample every 10th pixel for performance
         for (let i = 0; i < pixelCount; i += 10) {
             const offset = i * 4;

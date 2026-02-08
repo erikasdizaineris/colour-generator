@@ -11,7 +11,7 @@ A web application that generates colors based on text descriptions using image a
 ## Tech Stack
 - **Frontend**: Vanilla JS + Vite
 - **Backend**: Node.js + Express
-- **Analysis**: Custom scraper + `get-pixels` + `quantize`
+- **Analysis**: Custom scraper + `sharp` + `quantize`
 
 ## Development
 ```bash
