@@ -4,8 +4,8 @@ import cors from 'cors';
 import { JSONFilePreset } from 'lowdb/node';
 import { analyzeColorFromQuery } from './image-analysis.js';
 
-const envPath = process.env.DOTENV_CONFIG_PATH || '/home/u185988180/domains/myfavouritecolour.online/public_html/.builds/config/.env';
-dotenv.config({ path: envPath });
+const envPathDir = process.env.DOTENV_CONFIG_PATH || '/home/u185988180/domains/myfavouritecolour.online/public_html/.builds/config';
+dotenv.config({ path: `${envPathDir}/.env` });
 
 const app = express();
 const port = process.env.PORT || 3001;
