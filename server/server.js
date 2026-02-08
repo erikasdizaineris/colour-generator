@@ -10,7 +10,7 @@ const envPath = process.env.DOTENV_CONFIG_PATH || '/home/u185988180/domains/myfa
 dotenv.config({ path: envPath });
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
