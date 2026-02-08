@@ -198,9 +198,9 @@ button {
 /* Toast Notification */
 .toast {
     position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%) translateY(-100px);
+    top: 0;
+    left: 0;
+    transform: translate(0, 6px) scale(0.98);
     background-color: var(--success-color);
     color: white;
     padding: 12px 24px;
@@ -213,13 +213,21 @@ button {
     pointer-events: none;
     visibility: hidden;
     /* Prevent blocking clicks when invisible */
+    max-width: 240px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .toast.show {
-    transform: translateX(-50%) translateY(0);
+    transform: translate(0, 0) scale(1);
     opacity: 1;
     pointer-events: auto;
     visibility: visible;
+}
+
+.toast.error {
+    background-color: var(--error-color);
 }
 
 /* Feedback Buttons */

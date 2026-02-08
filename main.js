@@ -7,9 +7,16 @@ const canvas = document.getElementById('canvas');
 const feedbackContainer = document.getElementById('feedbackContainer');
 const likeBtn = document.getElementById('likeBtn');
 const dislikeBtn = document.getElementById('dislikeBtn');
+const toast = document.getElementById('toast');
+
+const apiBase = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) ? import.meta.env.VITE_API_BASE : '';
+const normalizedApiBase = apiBase.replace(/\/+$/, '');
+const generateEndpoint = normalizedApiBase ? `${normalizedApiBase}/api/generate` : '/api/generate';
+const feedbackEndpoint = normalizedApiBase ? `${normalizedApiBase}/api/feedback` : '/api/feedback';
 
 let currentColor = '';
 let currentQuery = '';
+let toastTimer = null;
 
 // Helper to ensure valid hex
 function rgbToHex(col) {
@@ -46,7 +53,7 @@ async function generateColor(options = {}) {
     }
 
     try {
-        const response = await fetch('/api/generate', {
+        const response = await fetch(generateEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -60,7 +67,10 @@ async function generateColor(options = {}) {
         if (!response.ok) throw new Error('Generation failed');
 
         const data = await response.json();
-        let generatedColor = data.color;
+        if (!data || typeof data.color !== 'string') {
+            throw new Error('No color in response');
+        }
+        let generatedColor = rgbToHex(data.color).toUpperCase();
 
         // Client-side Collision Check Fallback
         if (previousColor && generatedColor === previousColor) {
@@ -152,7 +162,7 @@ async function sendFeedback(rating) {
 
         // Handle Like
         if (rating === 'like') {
-            await fetch('/api/feedback', {
+            await fetch(feedbackEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: currentQuery, color: currentColor, rating })
@@ -241,29 +251,41 @@ downloadBtn.addEventListener('click', downloadImage);
 likeBtn.addEventListener('click', () => sendFeedback('like'));
 dislikeBtn.addEventListener('click', () => sendFeedback('dislike'));
 
-const toast = document.getElementById('toast');
+function showToast(message, event, isError = false) {
+    if (!toast) return;
 
-hexCodeSpan.addEventListener('click', () => {
+    toast.textContent = message;
+    toast.classList.toggle('error', isError);
+
+    const offset = 12;
+    const maxWidth = 240;
+    const maxHeight = 60;
+    const fallbackX = window.innerWidth / 2;
+    const fallbackY = 24;
+    const x = typeof event?.clientX === 'number' ? event.clientX : fallbackX;
+    const y = typeof event?.clientY === 'number' ? event.clientY : fallbackY;
+
+    const left = Math.min(Math.max(8, x + offset), window.innerWidth - maxWidth - 8);
+    const top = Math.min(Math.max(8, y + offset), window.innerHeight - maxHeight - 8);
+
+    toast.style.left = `${left}px`;
+    toast.style.top = `${top}px`;
+
+    toast.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+    }, 2000);
+}
+
+hexCodeSpan.addEventListener('click', (event) => {
     if (!currentColor) return;
 
     navigator.clipboard.writeText(currentColor).then(() => {
-        // Visual feedback using Toast
-        toast.classList.add('show');
-        setTimeout(() => {
-            toast.classList.remove('show');
-        }, 2000);
+        showToast('Copied to clipboard!', event, false);
     }).catch(err => {
         console.error('Failed to copy class', err);
         // Fallback if clipboard fails (rare in secure contexts)
-        toast.textContent = 'Failed to copy';
-        toast.style.backgroundColor = 'var(--error-color)';
-        toast.classList.add('show');
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => {
-                toast.textContent = 'Copied to clipboard!';
-                toast.style.backgroundColor = 'var(--success-color)';
-            }, 300);
-        }, 2000);
+        showToast('Failed to copy', event, true);
     });
 });

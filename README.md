@@ -27,5 +27,9 @@ npm run start
 ## Deployment
 1.  Ensure `node_modules` is ignored.
 2.  Set `PORT` environment variable on your host.
+3.  Configure `VITE_API_BASE` for the frontend:
+		- If backend is on the same domain, leave it empty.
+		- If backend is on a different domain, set it to the full base URL (no trailing slash).
+			Example: `https://api.myfavouritecolour.online`
 3.  Run `npm install` and `npm run build` on the server.
 4.  Start with `npm start`.
