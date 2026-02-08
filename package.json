@@ -1,0 +1,21 @@
+{
+  "name": "color-gen",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "get-pixels": "^3.3.3",
+    "lowdb": "^7.0.1",
+    "node-fetch": "^3.3.2",
+    "quantize": "^1.0.2",
+    "vite": "^5.0.0"
+  }
+}
