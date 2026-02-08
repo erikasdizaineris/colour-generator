@@ -43,7 +43,7 @@ async function generateColor(options = {}) {
         dislikeStep = 0;
     }
 
-    if (mode !== 'refine') {
+    if (mode !== 'refine' && similarBtn) {
         similarBtn.disabled = true;
     }
 
@@ -87,7 +87,9 @@ async function generateColor(options = {}) {
         colorPreview.classList.add('active');
         hexCodeSpan.textContent = generatedColor;
         downloadBtn.disabled = false;
-        similarBtn.disabled = false;
+        if (similarBtn) {
+            similarBtn.disabled = false;
+        }
         colorInput.style.borderColor = generatedColor;
 
     } catch (err) {
@@ -113,7 +115,9 @@ async function generateColor(options = {}) {
         hexCodeSpan.textContent = fallbackColor;
         currentColor = fallbackColor;
         downloadBtn.disabled = false;
-        similarBtn.disabled = false;
+        if (similarBtn) {
+            similarBtn.disabled = false;
+        }
         colorInput.style.borderColor = fallbackColor;
     } finally {
         generateBtn.disabled = false;
@@ -142,6 +146,8 @@ async function sendFeedback(rating) {
 
 async function generateSimilar() {
     if (!currentQuery || !currentColor) return;
+
+    if (!similarBtn) return;
 
     const originalText = similarBtn.textContent;
     similarBtn.disabled = true;
@@ -228,7 +234,9 @@ downloadBtn.addEventListener('click', async () => {
     await sendFeedback('like');
     downloadImage();
 });
-similarBtn.addEventListener('click', generateSimilar);
+if (similarBtn) {
+    similarBtn.addEventListener('click', generateSimilar);
+}
 
 function showToast(message, event, isError = false) {
     if (!toast) return;
