@@ -2,193 +2,6 @@ import fetch from 'node-fetch';
 import sharp from 'sharp';
 import quantize from 'quantize';
 
-const geminiApiKey = process.env.GEMINI_API_KEY || '';
-const geminiModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-
-let cachedGeminiModels = null;
-let cachedGeminiModelsAt = 0;
-
-function tokenize(text) {
-    return text
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter(Boolean);
-}
-
-function extractJsonObject(text) {
-    if (!text) return null;
-    try {
-        return JSON.parse(text);
-    } catch {
-        const match = text.match(/\{[\s\S]*\}/);
-        if (!match) return null;
-        try {
-            return JSON.parse(match[0]);
-        } catch {
-            return null;
-        }
-    }
-}
-
-function normalizeHexList(colors) {
-    if (!Array.isArray(colors)) return [];
-    return colors
-        .map((col) => {
-            if (typeof col !== 'string') return null;
-            const trimmed = col.trim();
-            const hexMatch = trimmed.match(/^#?[0-9A-Fa-f]{6}$/);
-            if (!hexMatch) return null;
-            return trimmed.startsWith('#') ? trimmed.toUpperCase() : `#${trimmed.toUpperCase()}`;
-        })
-        .filter(Boolean);
-}
-
-async function analyzeImageWithGemini(url, query) {
-    if (!geminiApiKey) return null;
-
-    const response = await fetch(url, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
-        }
-    });
-
-    if (!response.ok) {
-        throw new Error(`Image fetch failed: ${response.status}`);
-    }
-
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64 = buffer.toString('base64');
-
-    const prompt = `Return only JSON. Describe the image and list the most prominent colors as HEX.\n` +
-        `Schema: {"keywords": ["word", ...], "colors": ["#RRGGBB", ...]}\n` +
-        `Rules: 3-6 colors, lowercase keywords, no extra text. Query: ${query}`;
-
-    const body = {
-        contents: [
-            {
-                role: 'user',
-                parts: [
-                    { text: prompt },
-                    { inlineData: { mimeType: contentType, data: base64 } }
-                ]
-            }
-        ]
-    };
-
-    const selectedModel = await resolveGeminiModel();
-    if (!selectedModel) {
-        throw new Error('Gemini API error: no compatible models found');
-    }
-
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${geminiApiKey}`;
-    const geminiResponse = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-
-    if (!geminiResponse.ok) {
-        const errorText = await geminiResponse.text();
-        throw new Error(`Gemini API error: ${geminiResponse.status} ${errorText}`);
-    }
-
-    const payload = await geminiResponse.json();
-    const text = payload?.candidates?.[0]?.content?.parts
-        ?.map((part) => part.text || '')
-        .join('') || '';
-
-    const json = extractJsonObject(text);
-    if (!json) return null;
-
-    const colors = normalizeHexList(json.colors);
-    const keywords = Array.isArray(json.keywords) ? json.keywords.map((k) => String(k).toLowerCase()) : [];
-
-    if (!colors.length) return null;
-
-    return { colors, keywords };
-}
-
-async function fetchGeminiModels() {
-    if (!geminiApiKey) return [];
-
-    const now = Date.now();
-    if (cachedGeminiModels && now - cachedGeminiModelsAt < 5 * 60 * 1000) {
-        return cachedGeminiModels;
-    }
-
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${geminiApiKey}`;
-    const response = await fetch(endpoint);
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Gemini model list error: ${response.status} ${errorText}`);
-    }
-
-    const payload = await response.json();
-    const models = Array.isArray(payload.models) ? payload.models : [];
-    cachedGeminiModels = models;
-    cachedGeminiModelsAt = now;
-    return models;
-}
-
-function pickBestGeminiModel(models) {
-    const supported = models.filter((model) =>
-        Array.isArray(model.supportedGenerationMethods) &&
-        model.supportedGenerationMethods.includes('generateContent')
-    );
-
-    const byName = (name) => supported.find((model) => model.name === name);
-    const preferredName = `models/${geminiModel}`;
-    const preferred = byName(preferredName);
-    if (preferred) return preferred.name.replace('models/', '');
-
-    const ranked = supported
-        .map((model) => model.name)
-        .filter((name) => !name.includes('embedding'))
-        .sort((a, b) => {
-            const score = (name) => {
-                if (name.includes('flash')) return 3;
-                if (name.includes('pro')) return 2;
-                return 1;
-            };
-            return score(b) - score(a);
-        });
-
-    if (ranked.length) return ranked[0].replace('models/', '');
-    return null;
-}
-
-async function resolveGeminiModel() {
-    const models = await fetchGeminiModels();
-    const selected = pickBestGeminiModel(models);
-    if (selected && selected !== geminiModel) {
-        console.log(`[Gemini] Using model fallback: ${selected}`);
-    }
-    return selected;
-}
-
-async function mapWithLimit(items, limit, mapper) {
-    const results = new Array(items.length);
-    let index = 0;
-
-    const workers = Array.from({ length: Math.min(limit, items.length) }, () => (async () => {
-        while (true) {
-            const current = index++;
-            if (current >= items.length) break;
-            try {
-                results[current] = await mapper(items[current], current);
-            } catch (error) {
-                console.error('Gemini analysis failed:', items[current], error.message);
-                results[current] = null;
-            }
-        }
-    })());
-
-    await Promise.all(workers);
-    return results;
-}
-
 // Helper to get dominant color from an image URL
 async function getDominantColor(url) {
     try {
@@ -250,8 +63,7 @@ async function getDominantColor(url) {
 // A robust way without keys is tricky. 
 // We will use 'unsplash' source API for demo purposes as it is reliable for "concepts".
 // Robust image search trying multiple sources
-async function searchImages(query, options = {}) {
-    const { offset = 0, count = 10 } = options;
+async function searchImages(query) {
     const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -262,7 +74,7 @@ async function searchImages(query, options = {}) {
         console.log(`Searching images for: ${query} (trying DuckDuckGo/Bing)`);
 
         // Using a Bing Scraper fallback which is generally more permissive for demo purposes
-        const bingUrl = `https://www.bing.com/images/async?q=${encodeURIComponent(query)}&first=${offset}&count=${count}&mmasync=1`;
+        const bingUrl = `https://www.bing.com/images/async?q=${encodeURIComponent(query)}&first=0&count=10&mmasync=1`;
 
         // Add 3s timeout to prevent hanging (if supported)
         let signal;
@@ -285,7 +97,7 @@ async function searchImages(query, options = {}) {
         let match;
         const urls = [];
 
-        while ((match = murlRegex.exec(html)) !== null && urls.length < count) {
+        while ((match = murlRegex.exec(html)) !== null && urls.length < 8) {
             urls.push(match[1]);
         }
 
@@ -298,74 +110,28 @@ async function searchImages(query, options = {}) {
     }
 }
 
-export async function analyzeColorFromQuery(query, options = {}) {
-    const { searchQuery = query, offset = 0, count = 10 } = options;
+export async function analyzeColorFromQuery(query) {
     console.log(`Analyzing color for: ${query}`);
 
     // 1. Search images
-    const imageUrls = await searchImages(searchQuery, { offset, count });
+    const imageUrls = await searchImages(query);
     if (imageUrls.length === 0) return null;
 
     // 2. Analyze images to build a candidate list
-    // Prefer Gemini vision analysis when configured; fallback to dominant colors.
+    // We want "top 10+n" results available for the user to cycle through.
+    // We'll fetch up to 10 images and get the dominant color from each.
     const candidates = [];
-    const urls = imageUrls.slice(0, count);
-    const colorCounts = new Map();
-    let orderCounter = 0;
 
-    if (geminiApiKey) {
-        const queryTokens = tokenize(query);
-        const results = await mapWithLimit(urls, 3, (url) => analyzeImageWithGemini(url, query));
-        const scored = [];
+    // Process in parallel for speed, but limit to 5-8 to save bandwidth/time
+    // The user mentioned "top 10", let's try to get a good spread.
+    const processPromises = imageUrls.slice(0, 8).map(url => getDominantColor(url));
+    const results = await Promise.all(processPromises);
 
-        for (let i = 0; i < results.length; i++) {
-            const result = results[i];
-            if (!result) continue;
-            const keywords = Array.isArray(result.keywords) ? result.keywords : [];
-            const score = keywords.reduce((total, word) => total + (queryTokens.includes(word) ? 1 : 0), 0);
-            console.log('[Gemini]', urls[i], { keywords, colors: result.colors, score });
-            for (const color of result.colors) {
-                scored.push({ color, score });
-            }
-        }
-
-        scored.sort((a, b) => b.score - a.score);
-        for (const entry of scored) {
-            if (!colorCounts.has(entry.color)) {
-                colorCounts.set(entry.color, { count: 1, order: orderCounter++ });
-            } else {
-                colorCounts.get(entry.color).count += 1;
-            }
-        }
-    }
-
-    if (colorCounts.size === 0) {
-        // Fallback: dominant color extraction
-        const processPromises = urls.map(url => getDominantColor(url));
-        const results = await Promise.all(processPromises);
-
-        for (const col of results) {
-            if (col) {
-                const hex = "#" + ((1 << 24) + (col[0] << 16) + (col[1] << 8) + col[2]).toString(16).slice(1).toUpperCase();
-                if (!colorCounts.has(hex)) {
-                    colorCounts.set(hex, { count: 1, order: orderCounter++ });
-                } else {
-                    colorCounts.get(hex).count += 1;
-                }
-            }
-        }
-    }
-
-    if (colorCounts.size) {
-        const ranked = Array.from(colorCounts.entries())
-            .map(([color, meta]) => ({ color, count: meta.count, order: meta.order }))
-            .sort((a, b) => {
-                if (b.count !== a.count) return b.count - a.count;
-                return a.order - b.order;
-            });
-
-        for (const entry of ranked) {
-            candidates.push(entry.color);
+    for (const col of results) {
+        if (col) {
+            // Convert [r,g,b] to Hex
+            const hex = "#" + ((1 << 24) + (col[0] << 16) + (col[1] << 8) + col[2]).toString(16).slice(1).toUpperCase();
+            candidates.push(hex);
         }
     }
 

@@ -2,9 +2,11 @@ const colorInput = document.getElementById('colorInput');
 const generateBtn = document.getElementById('generateBtn');
 const colorPreview = document.getElementById('colorPreview');
 const hexCodeSpan = document.getElementById('hexCode');
-const similarBtn = document.getElementById('similarBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const canvas = document.getElementById('canvas');
+const feedbackContainer = document.getElementById('feedbackContainer');
+const likeBtn = document.getElementById('likeBtn');
+const dislikeBtn = document.getElementById('dislikeBtn');
 const toast = document.getElementById('toast');
 
 const apiBase = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) ? import.meta.env.VITE_API_BASE : '';
@@ -43,8 +45,11 @@ async function generateColor(options = {}) {
         dislikeStep = 0;
     }
 
+    // Visual reset on new searches
     if (mode !== 'refine') {
-        similarBtn.disabled = true;
+        feedbackContainer.style.display = 'none';
+        likeBtn.classList.remove('liked');
+        dislikeBtn.classList.remove('disliked');
     }
 
     try {
@@ -87,8 +92,13 @@ async function generateColor(options = {}) {
         colorPreview.classList.add('active');
         hexCodeSpan.textContent = generatedColor;
         downloadBtn.disabled = false;
-        similarBtn.disabled = false;
         colorInput.style.borderColor = generatedColor;
+
+        // Ensure feedback is visible again and buttons are reset
+        feedbackContainer.style.display = 'flex';
+        // Reset buttons to "neutral" after reload
+        likeBtn.classList.remove('liked');
+        dislikeBtn.classList.remove('disliked');
 
     } catch (err) {
         console.warn('Backend unavailable:', err);
@@ -113,8 +123,14 @@ async function generateColor(options = {}) {
         hexCodeSpan.textContent = fallbackColor;
         currentColor = fallbackColor;
         downloadBtn.disabled = false;
-        similarBtn.disabled = false;
         colorInput.style.borderColor = fallbackColor;
+
+        // Hide feedback since we can't save it
+        feedbackContainer.style.display = 'none';
+
+        // Also reset buttons
+        likeBtn.classList.remove('liked');
+        dislikeBtn.classList.remove('disliked');
     } finally {
         generateBtn.disabled = false;
         generateBtn.textContent = 'Generate';
@@ -125,6 +141,26 @@ async function sendFeedback(rating) {
     if (!currentQuery || !currentColor) return;
 
     try {
+        if (rating === 'dislike') {
+            // Visual Feedback
+            dislikeBtn.classList.add('disliked');
+            likeBtn.classList.remove('liked');
+
+            const originalText = dislikeBtn.textContent;
+            dislikeBtn.disabled = true;
+            dislikeBtn.textContent = '...';
+
+            // Increment step and refine
+            dislikeStep++;
+            await generateColor({ previousColor: currentColor, mode: 'refine', step: dislikeStep });
+
+            // Restore button
+            dislikeBtn.disabled = false;
+            dislikeBtn.textContent = originalText;
+            return;
+        }
+
+        // Handle Like
         if (rating === 'like') {
             await fetch(feedbackEndpoint, {
                 method: 'POST',
@@ -132,26 +168,14 @@ async function sendFeedback(rating) {
                 body: JSON.stringify({ query: currentQuery, color: currentColor, rating })
             });
 
+            likeBtn.classList.add('liked');
+            dislikeBtn.classList.remove('disliked');
         }
 
     } catch (err) {
         console.error('Feedback failed:', err);
-    }
-}
-
-async function generateSimilar() {
-    if (!currentQuery || !currentColor) return;
-
-    const originalText = similarBtn.textContent;
-    similarBtn.disabled = true;
-    similarBtn.textContent = 'Generating...';
-
-    try {
-        dislikeStep++;
-        await generateColor({ previousColor: currentColor, mode: 'refine', step: dislikeStep });
-    } finally {
-        similarBtn.disabled = false;
-        similarBtn.textContent = originalText;
+        dislikeBtn.disabled = false;
+        dislikeBtn.textContent = '👎';
     }
 }
 
@@ -223,11 +247,9 @@ colorInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') generateColor();
 });
 
-downloadBtn.addEventListener('click', async () => {
-    await sendFeedback('like');
-    downloadImage();
-});
-similarBtn.addEventListener('click', generateSimilar);
+downloadBtn.addEventListener('click', downloadImage);
+likeBtn.addEventListener('click', () => sendFeedback('like'));
+dislikeBtn.addEventListener('click', () => sendFeedback('dislike'));
 
 function showToast(message, event, isError = false) {
     if (!toast) return;
@@ -249,10 +271,12 @@ function showToast(message, event, isError = false) {
     toast.style.left = `${left}px`;
     toast.style.top = `${top}px`;
 
+    toast.style.display = 'block';
     toast.classList.add('show');
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
         toast.classList.remove('show');
+        toast.style.display = 'none';
     }, 2000);
 }
 
