@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { JSONFilePreset } from 'lowdb/node';
 import { analyzeColorFromQuery } from './image-analysis.js';
 
@@ -10,6 +12,10 @@ dotenv.config({ path: envPath });
 const app = express();
 const port = process.env.PORT || 3001;
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, '..');
+
 const candidateCache = new Map();
 const cacheTtlMs = 30 * 60 * 1000;
 
@@ -18,7 +24,7 @@ const defaultData = { likes: [], candidateCache: {} };
 let db = null;
 
 try {
-    db = await JSONFilePreset('db.json', defaultData);
+    db = await JSONFilePreset(path.join(rootDir, 'db.json'), defaultData);
     if (!db.data.candidateCache) {
         db.data.candidateCache = {};
     }
@@ -32,10 +38,9 @@ try {
     };
 }
 
-
 app.use(cors());
 app.use(express.json());
-app.use(express.static('dist')); // Serve frontend static files
+app.use(express.static(path.join(rootDir, 'dist'))); // Serve frontend static files
 
 // Helper: Hashing fallback (reused logic)
 function getHashColor(str) {
@@ -342,19 +347,6 @@ app.post('/api/generate', async (req, res) => {
         return res.json({ color: learned.color, source: 'learned' });
     }
 
-    // MODE: DISLIKE/SHIFT (Legacy Hue Shift + New Logic combined?)
-    // The user said: "The dislike button doesn't generate new colour as required... pressing dislike button should make the colour 3.9 percent more..."
-    // This implies we follow the new "Refine" path on dislike.
-    // We will use the 'step' parameter to track how many times they disliked.
-    // NOTE: We do NOT need to read DB here.
-
-    // 1. Perform Analysis (Get all candidates)
-    // We cache this? Ideally yes, but for stateless simplicity we might re-fetch. 
-    // Optimization: In a real app we'd cache the candidates in the DB or memory. 
-    // Here we re-run analysis (which searches images). 
-    // To be faster/stable, let's assume analyzeColorFromQuery returns the same-ish results 
-    // or we lean on the "randomness" of the search to provide the variety the user wants via "top 10+n".
-
     let candidates = [];
     let candidateIndex = 0;
     let selectedAnalyzedColor = null;
@@ -372,7 +364,7 @@ app.post('/api/generate', async (req, res) => {
             candidateIndex = result.index || 0;
         }
     } catch (e) {
-        console.warn("Analysis skipped or failed:", e.message);
+        console.warn('Analysis skipped or failed:', e.message);
     }
 
     if (candidates.length === 0) {
@@ -415,14 +407,14 @@ app.post('/api/generate', async (req, res) => {
                 finalColor = shiftHue(finalColor, 0, spectrumRanges);
             }
         } else {
-            console.log("Persistent collision. Forcing hue shift.");
+            console.log('Persistent collision. Forcing hue shift.');
             finalColor = shiftHue(finalColor, 30, spectrumRanges);
         }
     }
 
     // Final failsafe: if we still collide after attempts, force a hue shift
     if (previousColor && finalColor.toUpperCase() === previousColor.toUpperCase()) {
-        console.log("Persistent collision. Forcing hue shift.");
+        console.log('Persistent collision. Forcing hue shift.');
         finalColor = shiftHue(finalColor, 30, spectrumRanges); // Shift 30 degrees
     }
 
@@ -433,8 +425,8 @@ app.post('/api/generate', async (req, res) => {
 
     // Final Safety Check
     if (!finalColor) {
-        console.warn("Unexpected: finalColor is null. Using fallback.");
-        finalColor = "#CCCCCC";
+        console.warn('Unexpected: finalColor is null. Using fallback.');
+        finalColor = '#CCCCCC';
     }
 
     // Else 100% Analysis (Cycling through candidates)
@@ -450,7 +442,7 @@ app.post('/api/feedback', async (req, res) => {
             await db.update(({ likes }) => likes.push({ query, color, timestamp: Date.now() }));
             console.log(`Learned: ${query} => ${color}`);
         } catch (e) {
-            console.error("Failed to save feedback", e);
+            console.error('Failed to save feedback', e);
         }
     }
 

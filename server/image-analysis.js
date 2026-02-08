@@ -277,9 +277,9 @@ async function getDominantColor(url) {
 }
 
 // Simple image search scraper (DuckDuckGo HTML fallback or similar)
-// For this demo, since we don't have an API key, we'll try to use a free specialized source 
-// or scrape a public search result page. 
-// A robust way without keys is tricky. 
+// For this demo, since we don't have an API key, we'll try to use a free specialized source
+// or scrape a public search result page.
+// A robust way without keys is tricky.
 // We will use 'unsplash' source API for demo purposes as it is reliable for "concepts".
 // Robust image search trying multiple sources
 async function searchImages(query, options = {}) {
@@ -325,7 +325,7 @@ async function searchImages(query, options = {}) {
         return urls;
 
     } catch (e) {
-        console.error("Search failed:", e);
+        console.error('Search failed:', e);
         return [];
     }
 }
