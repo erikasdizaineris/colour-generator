@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Colour Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/index-DbPcQg0y.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BnC8Be8W.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Colour Generator</h1>
+            <p>Transform words into vibrant colours.</p>
+        </header>
+
+        <main>
+            <div class="input-group">
+                <input type="text" id="colorInput"
+                    placeholder="Enter a colour description (e.g., 'Mint Green', 'Deep Sky')..." autocomplete="off">
+                <button id="generateBtn">Generate</button>
+            </div>
+
+            <div class="preview-container">
+                <div id="colorPreview" class="color-preview">
+                    <span id="hexCode" title="Click to copy">#FFFFFF</span>
+                </div>
+                <div id="feedbackContainer" class="feedback-container" style="display: none;">
+                    <button id="likeBtn" class="feedback-btn" title="I like this match">
+                        👍
+                    </button>
+                    <button id="dislikeBtn" class="feedback-btn" title="I dislike this match">
+                        👎
+                    </button>
+                </div>
+            </div>
+
+            <button id="downloadBtn" class="secondary-btn" disabled>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Download Swatch
+            </button>
+        </main>
+    </div>
+
+    <!-- Hidden canvas for image generation -->
+    <canvas id="canvas" style="display: none;"></canvas>
+
+    <div id="toast" class="toast">Copied to clipboard!</div>
+
+</body>
+
+</html>
