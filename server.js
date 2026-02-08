@@ -287,6 +287,12 @@ app.post('/api/generate', async (req, res) => {
         return res.json({ color: finalColor, source: 'weighted_raw', weight, step: currentStep });
     }
 
+    // Final Safety Check
+    if (!finalColor) {
+        console.warn("Unexpected: finalColor is null. Using fallback.");
+        finalColor = "#CCCCCC";
+    }
+
     // Else 100% Analysis (Cycling through candidates)
     console.log(`Result: ${finalColor} (Source: Analysis, Step: ${currentStep})`);
     return res.json({ color: finalColor, source: 'analyzed_candidate', step: currentStep });
