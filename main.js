@@ -7,6 +7,11 @@ const downloadBtn = document.getElementById('downloadBtn');
 const canvas = document.getElementById('canvas');
 const toast = document.getElementById('toast');
 
+const requiredElements = [colorInput, generateBtn, colorPreview, hexCodeSpan, downloadBtn];
+if (requiredElements.some((el) => !el)) {
+    console.error('Missing required UI elements. Make sure the latest HTML is deployed.');
+}
+
 const apiBase = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) ? import.meta.env.VITE_API_BASE : '';
 const normalizedApiBase = apiBase.replace(/\/+$/, '');
 const generateEndpoint = normalizedApiBase ? `${normalizedApiBase}/api/generate` : '/api/generate';
@@ -29,6 +34,10 @@ let dislikeStep = 0;
 
 // generateColor can now take an options object
 async function generateColor(options = {}) {
+    if (requiredElements.some((el) => !el)) {
+        return;
+    }
+
     const query = colorInput.value.trim();
     if (!query) return;
 
@@ -225,15 +234,20 @@ function getContrastYIQ(hexcolor) {
     return (yiq >= 128) ? 'black' : 'white';
 }
 
-generateBtn.addEventListener('click', generateColor);
-colorInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') generateColor();
-});
+if (generateBtn && colorInput) {
+    generateBtn.addEventListener('click', generateColor);
+    colorInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') generateColor();
+    });
+}
 
-downloadBtn.addEventListener('click', async () => {
-    await sendFeedback('like');
-    downloadImage();
-});
+if (downloadBtn) {
+    downloadBtn.addEventListener('click', async () => {
+        await sendFeedback('like');
+        downloadImage();
+    });
+}
+
 if (similarBtn) {
     similarBtn.addEventListener('click', generateSimilar);
 }
@@ -267,20 +281,22 @@ function showToast(message, event, isError = false) {
     }, 2000);
 }
 
-hexCodeSpan.addEventListener('click', async (event) => {
-    if (!currentColor) return;
+if (hexCodeSpan) {
+    hexCodeSpan.addEventListener('click', async (event) => {
+        if (!currentColor) return;
 
-    try {
-        await sendFeedback('like');
-    } catch (err) {
-        console.warn('Failed to send learning feedback on copy:', err);
-    }
+        try {
+            await sendFeedback('like');
+        } catch (err) {
+            console.warn('Failed to send learning feedback on copy:', err);
+        }
 
-    navigator.clipboard.writeText(currentColor).then(() => {
-        showToast('Copied to clipboard!', event, false);
-    }).catch(err => {
-        console.error('Failed to copy class', err);
-        // Fallback if clipboard fails (rare in secure contexts)
-        showToast('Failed to copy', event, true);
+        navigator.clipboard.writeText(currentColor).then(() => {
+            showToast('Copied to clipboard!', event, false);
+        }).catch(err => {
+            console.error('Failed to copy class', err);
+            // Fallback if clipboard fails (rare in secure contexts)
+            showToast('Failed to copy', event, true);
+        });
     });
-});
+}
