@@ -232,44 +232,12 @@ button {
     background-color: var(--error-color);
 }
 
-/* Feedback Buttons */
-.feedback-container {
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-    margin-top: 1rem;
-    animation: fadeIn 0.5s ease-out;
+/* Action Buttons */
+.action-buttons {
+    display: grid;
+    gap: 12px;
 }
 
-.feedback-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-color);
-    font-size: 1.2rem;
-    padding: 0.5rem 1rem;
-    border-radius: 50%;
-    width: 48px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.feedback-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    transform: scale(1.1);
-}
-
-.feedback-btn.liked {
-    background: var(--success-color);
-    border-color: var(--success-color);
-    color: white;
-}
-
-.feedback-btn.disliked {
-    background: var(--error-color);
-    border-color: var(--error-color);
-    color: white;
-}
 
 /* Secondary Button */
 .secondary-btn {
