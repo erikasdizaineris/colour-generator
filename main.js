@@ -259,8 +259,14 @@ function showToast(message, event, isError = false) {
     }, 2000);
 }
 
-hexCodeSpan.addEventListener('click', (event) => {
+hexCodeSpan.addEventListener('click', async (event) => {
     if (!currentColor) return;
+
+    try {
+        await sendFeedback('like');
+    } catch (err) {
+        console.warn('Failed to send learning feedback on copy:', err);
+    }
 
     navigator.clipboard.writeText(currentColor).then(() => {
         showToast('Copied to clipboard!', event, false);

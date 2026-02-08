@@ -6,12 +6,18 @@ import { analyzeColorFromQuery } from './image-analysis.js';
 const app = express();
 const port = process.env.PORT || 3001;
 
+const candidateCache = new Map();
+const cacheTtlMs = 30 * 60 * 1000;
+
 // Setup DB (Optional / Failure-safe)
-const defaultData = { likes: [] };
+const defaultData = { likes: [], candidateCache: {} };
 let db = null;
 
 try {
     db = await JSONFilePreset('db.json', defaultData);
+    if (!db.data.candidateCache) {
+        db.data.candidateCache = {};
+    }
 } catch (err) {
     console.warn("Database initialization failed (likely read-only environment). features like 'Like' will not persist.", err);
     // Create a dummy in-memory DB or just let it be null and check before use
@@ -73,6 +79,130 @@ const colorNames = {
     'lavender': { hex: '#E6E6FA', range: [[170, 200]] },
     'coral': { hex: '#FF7F50', range: [[10, 30]] }
 };
+
+function tokenizeQuery(query) {
+    return query
+        .toLowerCase()
+        .split(/[^a-z]+/)
+        .filter(Boolean);
+}
+
+function findRawColorName(query) {
+    const tokens = tokenizeQuery(query);
+    for (const token of tokens) {
+        if (colorNames[token]) return token;
+    }
+    return null;
+}
+
+function isSingleRawColorQuery(query) {
+    const tokens = tokenizeQuery(query);
+    return tokens.length === 1 && !!colorNames[tokens[0]];
+}
+
+function getCacheKey(query, analysisQuery) {
+    const q = query.toLowerCase().trim();
+    const a = analysisQuery.toLowerCase().trim();
+    return `${q}||${a}`;
+}
+
+function loadCachedEntry(key) {
+    const record = db?.data?.candidateCache?.[key];
+    if (!record) return null;
+
+    return {
+        key,
+        createdAt: record.createdAt,
+        candidates: Array.isArray(record.candidates) ? record.candidates : [],
+        seen: new Set(Array.isArray(record.seen) ? record.seen : []),
+        pagesLoaded: record.pagesLoaded || 0
+    };
+}
+
+async function persistCachedEntry(cache) {
+    if (!db?.data) return;
+    if (!db.data.candidateCache) db.data.candidateCache = {};
+
+    db.data.candidateCache[cache.key] = {
+        createdAt: cache.createdAt,
+        candidates: cache.candidates,
+        seen: Array.from(cache.seen),
+        pagesLoaded: cache.pagesLoaded
+    };
+
+    try {
+        await db.update((data) => data);
+    } catch (error) {
+        console.warn('Failed to persist candidate cache:', error.message);
+    }
+}
+
+function getCandidateCache(query, analysisQuery) {
+    const key = getCacheKey(query, analysisQuery);
+    const now = Date.now();
+    const cached = candidateCache.get(key);
+
+    if (cached && now - cached.createdAt < cacheTtlMs) {
+        return cached;
+    }
+
+    const persisted = loadCachedEntry(key);
+    if (persisted && now - persisted.createdAt < cacheTtlMs) {
+        candidateCache.set(key, persisted);
+        return persisted;
+    }
+
+    const fresh = {
+        key,
+        createdAt: now,
+        candidates: [],
+        seen: new Set(),
+        pagesLoaded: 0
+    };
+    candidateCache.set(key, fresh);
+    persistCachedEntry(fresh);
+    return fresh;
+}
+
+async function getPopularCandidateForStep(query, analysisQuery, step) {
+    const pageSize = 10;
+    const maxPages = 10;
+    const targetIndex = Math.max(0, step);
+    const cache = getCandidateCache(query, analysisQuery);
+
+    while (cache.candidates.length <= targetIndex && cache.pagesLoaded < maxPages) {
+        const candidates = await analyzeColorFromQuery(query, {
+            searchQuery: analysisQuery,
+            offset: cache.pagesLoaded * pageSize,
+            count: pageSize
+        });
+
+        cache.pagesLoaded += 1;
+
+        let changed = false;
+        if (candidates && candidates.length) {
+            for (const candidate of candidates) {
+                if (!cache.seen.has(candidate)) {
+                    cache.seen.add(candidate);
+                    cache.candidates.push(candidate);
+                    changed = true;
+                }
+            }
+        } else {
+            break;
+        }
+
+        if (changed) {
+            await persistCachedEntry(cache);
+        }
+    }
+
+    if (cache.candidates.length > targetIndex) {
+        return { candidate: cache.candidates[targetIndex], candidates: cache.candidates, index: targetIndex };
+    }
+
+    return { candidate: null, candidates: cache.candidates, index: targetIndex };
+}
 
 // Helper: Blend two colors
 function blendColors(color1, color2, weight1) {
@@ -138,9 +268,9 @@ function shiftHue(hex, degree, ranges = null) {
         const [min, max] = currentRange;
         hue255 += degree;
 
-        // Loop locally
-        if (hue255 > max) hue255 = min + (hue255 - max);
-        else if (hue255 < min) hue255 = max - (min - hue255);
+        // Loop locally until within range
+        while (hue255 > max) hue255 = min + (hue255 - max);
+        while (hue255 < min) hue255 = max - (min - hue255);
 
     } else {
         // Global Loop (0-255)
@@ -178,14 +308,34 @@ function shiftHue(hex, degree, ranges = null) {
 app.post('/api/generate', async (req, res) => {
     const { query, previousColor, mode, step = 0 } = req.body;
 
-    // Check for Raw Color Name matches to establish Constraints
-    const queryLower = query.toLowerCase();
-    let rawColorData = null;
-    for (const [name, data] of Object.entries(colorNames)) {
-        if (queryLower.includes(name)) {
-            rawColorData = data;
-            break;
-        }
+    if (typeof query !== 'string') {
+        return res.status(400).json({ error: 'Missing query' });
+    }
+
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+        return res.status(400).json({ error: 'Empty query' });
+    }
+
+    console.log(`[Generate] query="${normalizedQuery}" mode=${mode || 'new'} step=${step}`);
+
+    const isRawOnly = isSingleRawColorQuery(normalizedQuery);
+    const rawColorName = isRawOnly ? findRawColorName(normalizedQuery) : null;
+    const rawColorData = rawColorName ? colorNames[rawColorName] : null;
+    const spectrumColorName = findRawColorName(normalizedQuery);
+    const spectrumRanges = spectrumColorName ? colorNames[spectrumColorName]?.range : null;
+
+    if (isRawOnly) {
+        return res.json({ color: rawColorData.hex, source: 'raw_exact' });
+    }
+
+    const learned = db?.data?.likes
+        ?.slice()
+        .reverse()
+        .find((item) => item.query.toLowerCase() === normalizedQuery.toLowerCase());
+
+    if (!mode && step === 0 && learned?.color) {
+        return res.json({ color: learned.color, source: 'learned' });
     }
 
     // MODE: DISLIKE/SHIFT (Legacy Hue Shift + New Logic combined?)
@@ -202,84 +352,74 @@ app.post('/api/generate', async (req, res) => {
     // or we lean on the "randomness" of the search to provide the variety the user wants via "top 10+n".
 
     let candidates = [];
+    let candidateIndex = 0;
+    let selectedAnalyzedColor = null;
     try {
-        // We get an ARRAY of hex strings now
-        // Add a 3-second timeout race to prevent hanging
-        const analysisPromise = analyzeColorFromQuery(query);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Analysis Timeout')), 3500));
+        let analysisQuery = normalizedQuery;
+        if (mode === 'refine' && rawColorName) {
+            analysisQuery = `${normalizedQuery} 10 percent more ${rawColorName}`;
+        }
 
-        const results = await Promise.race([analysisPromise, timeoutPromise]);
+        const result = await getPopularCandidateForStep(normalizedQuery, analysisQuery, step);
 
-        if (results && Array.isArray(results)) {
-            candidates = [...results];
+        if (result && result.candidate) {
+            selectedAnalyzedColor = result.candidate;
+            candidates = result.candidates || [];
+            candidateIndex = result.index || 0;
         }
     } catch (e) {
         console.warn("Analysis skipped or failed:", e.message);
     }
 
-    // If absolutely no analysis, generate a fallback list using hashes
     if (candidates.length === 0) {
-        // Generate 15 fallback variants
         for (let i = 0; i < 15; i++) {
-            candidates.push(getHashColor(query + i));
+            candidates.push(getHashColor(normalizedQuery + i));
         }
+        candidateIndex = step % candidates.length;
+        selectedAnalyzedColor = candidates[candidateIndex];
     }
-
-    // 2. Select Base Candidate
-    // If we have raw color, we might still want to blend it with an analyzed color.
-    // If no raw color, we cycle through candidates based on 'step'.
 
     let finalColor = null;
     let weight = 0;
+    const currentStep = step;
 
-    // We want to ensure 'finalColor' is different from 'previousColor'
-    // We'll iterate a few times if needed to find a non-colliding color
-    const maxAttempts = 5;
-    let currentStep = step;
+    if (!selectedAnalyzedColor) {
+        selectedAnalyzedColor = candidates[candidateIndex];
+    }
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        // Recalculate based on potentially modified currentStep
+    finalColor = selectedAnalyzedColor;
 
-        // Make sure step is within bounds
-        const candidateIndex = currentStep % candidates.length;
-        let selectedAnalyzedColor = candidates[candidateIndex];
+    if (rawColorData) {
+        weight = 0.8;
+        finalColor = blendColors(rawColorData.hex, selectedAnalyzedColor, weight);
+    }
 
-        // 3. Apply Weighting Logic if Raw Color Exists
-        finalColor = selectedAnalyzedColor;
+    if (spectrumRanges) {
+        finalColor = shiftHue(finalColor, 0, spectrumRanges);
+    }
 
-        if (rawColorData) {
-            // Initial Weight: 80% (0.80)
-            // Increment: 3.9% (0.039) per step
-            // Logic: Loop back to 1% (0.01) if satisfying > 1.0
-
-            weight = 0.8;
-            const increment = 0.039;
-
-            // Simulate steps to find current weight state
-            for (let i = 0; i < currentStep; i++) {
-                weight += increment;
-                if (weight > 1.0) {
-                    weight = 0.01; // Reset to 1% as requested
-                }
+    if (previousColor && finalColor.toUpperCase() === previousColor.toUpperCase()) {
+        if (candidates.length > 1) {
+            const nextIndex = (candidateIndex + 1) % candidates.length;
+            selectedAnalyzedColor = candidates[nextIndex];
+            if (rawColorData) {
+                finalColor = blendColors(rawColorData.hex, selectedAnalyzedColor, weight || 0.8);
+            } else {
+                finalColor = selectedAnalyzedColor;
             }
-
-            finalColor = blendColors(rawColorData.hex, selectedAnalyzedColor, weight);
-        }
-
-        // Check collision if previousColor exists
-        if (previousColor && finalColor.toUpperCase() === previousColor.toUpperCase()) {
-            console.log(`Collision detected at step ${currentStep} (${finalColor}). Trying next step...`);
-            currentStep++; // Force next step
+            if (spectrumRanges) {
+                finalColor = shiftHue(finalColor, 0, spectrumRanges);
+            }
         } else {
-            // No collision, we are good
-            break;
+            console.log("Persistent collision. Forcing hue shift.");
+            finalColor = shiftHue(finalColor, 30, spectrumRanges);
         }
     }
 
     // Final failsafe: if we still collide after attempts, force a hue shift
     if (previousColor && finalColor.toUpperCase() === previousColor.toUpperCase()) {
         console.log("Persistent collision. Forcing hue shift.");
-        finalColor = shiftHue(finalColor, 30); // Shift 30 degrees
+        finalColor = shiftHue(finalColor, 30, spectrumRanges); // Shift 30 degrees
     }
 
     if (rawColorData) {
