@@ -174,7 +174,7 @@ function getCandidateCache(query, analysisQuery) {
 }
 
 async function getPopularCandidateForStep(query, analysisQuery, step) {
-    const pageSize = 10;
+    const pageSize = 5;
     const maxPages = 10;
     const targetIndex = Math.max(0, step);
     const cache = getCandidateCache(query, analysisQuery);
@@ -350,6 +350,7 @@ app.post('/api/generate', async (req, res) => {
     let candidates = [];
     let candidateIndex = 0;
     let selectedAnalyzedColor = null;
+    let analysisFailed = false;
     try {
         let analysisQuery = normalizedQuery;
         if (mode === 'refine' && rawColorName) {
@@ -362,17 +363,17 @@ app.post('/api/generate', async (req, res) => {
             selectedAnalyzedColor = result.candidate;
             candidates = result.candidates || [];
             candidateIndex = result.index || 0;
+        } else {
+            analysisFailed = true;
         }
     } catch (e) {
         console.warn('Analysis skipped or failed:', e.message);
+        analysisFailed = true;
     }
 
-    if (candidates.length === 0) {
-        for (let i = 0; i < 15; i++) {
-            candidates.push(getHashColor(normalizedQuery + i));
-        }
-        candidateIndex = step % candidates.length;
-        selectedAnalyzedColor = candidates[candidateIndex];
+    // If Gemini fails, do not use hash fallback, return error
+    if (candidates.length === 0 || analysisFailed) {
+        return res.status(502).json({ error: 'AI analysis failed, no color generated.' });
     }
 
     let finalColor = null;

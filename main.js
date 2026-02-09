@@ -32,6 +32,13 @@ function rgbToHex(col) {
 // Track refinement steps
 let dislikeStep = 0;
 
+
+// Single-line log for color generation
+function setColorLog(line) {
+    const logDiv = document.getElementById('colorLog');
+    if (logDiv) logDiv.textContent = line || '';
+}
+
 // generateColor can now take an options object
 async function generateColor(options = {}) {
     if (requiredElements.some((el) => !el)) {
@@ -43,20 +50,43 @@ async function generateColor(options = {}) {
 
     const { previousColor, mode, step } = options;
 
+
     // Reset UI
     generateBtn.disabled = true;
     generateBtn.textContent = 'Generating...';
+    clearColorLog();
 
     // Reset steps if this is a fresh generation
     if (!mode) {
         dislikeStep = 0;
     }
 
+    appendColorLog('Starting color generation...');
+
     if (mode !== 'refine' && similarBtn) {
         similarBtn.disabled = true;
     }
 
+    // Determine if this is a raw color query (single word, matches colorNames)
+    let isRawColor = false;
+    if (query) {
+        const tokens = query.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+        const colorNames = [
+            'red','green','blue','yellow','cyan','magenta','white','black','gray','grey','orange','purple','pink','brown','lime','navy','teal','maroon','olive','silver','gold','violet','indigo','turquoise','beige','mint','lavender','coral'
+        ];
+        if (tokens.length === 1 && colorNames.includes(tokens[0])) {
+            isRawColor = true;
+        }
+    }
+
+    if (isRawColor) {
+        appendColorLog('Detected raw color name. Returning exact color.');
+    } else {
+        appendColorLog('Analyzing images and using Gemini AI...');
+    }
+
     try {
+        appendColorLog('Requesting color from server...');
         const response = await fetch(generateEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -68,21 +98,59 @@ async function generateColor(options = {}) {
             })
         });
 
-        if (!response.ok) throw new Error('Generation failed');
+        if (spinner) spinner.style.display = 'none';
+        if (!response.ok) {
+            appendColorLog('AI analysis failed.');
+            // If backend returns error, show error message in color rectangle
+            let errorMsg = 'AI analysis failed.';
+            try {
+                const errData = await response.json();
+                if (errData && errData.error) errorMsg = errData.error;
+            } catch {}
+            colorPreview.style.backgroundColor = '#27272a';
+            colorPreview.classList.add('active');
+            hexCodeSpan.textContent = '';
+            // Remove any previous error
+            let errorSpan = document.getElementById('colorErrorMsg');
+            if (!errorSpan) {
+                errorSpan = document.createElement('span');
+                errorSpan.id = 'colorErrorMsg';
+                errorSpan.style.position = 'absolute';
+                errorSpan.style.top = '50%';
+                errorSpan.style.left = '50%';
+                errorSpan.style.transform = 'translate(-50%, -50%)';
+                errorSpan.style.background = 'rgba(0,0,0,0.7)';
+                errorSpan.style.color = '#fff';
+                errorSpan.style.fontSize = '1.2rem';
+                errorSpan.style.padding = '1rem 2rem';
+                errorSpan.style.borderRadius = '12px';
+                errorSpan.style.zIndex = '2';
+                errorSpan.style.pointerEvents = 'none';
+                colorPreview.appendChild(errorSpan);
+            }
+            errorSpan.textContent = errorMsg;
+            downloadBtn.disabled = true;
+            if (similarBtn) similarBtn.disabled = true;
+            colorInput.style.borderColor = '#ef4444';
+            return;
+        }
+
+        // Remove error message if present
+        let errorSpan = document.getElementById('colorErrorMsg');
+        if (errorSpan) errorSpan.remove();
+        appendColorLog('Color generated successfully.');
+        if (spinner) spinner.style.display = 'none';
 
         const data = await response.json();
         if (!data || typeof data.color !== 'string') {
             throw new Error('No color in response');
         }
         let generatedColor = rgbToHex(data.color).toUpperCase();
+        appendColorLog('Result: ' + generatedColor);
 
         // Client-side Collision Check Fallback
         if (previousColor && generatedColor === previousColor) {
             console.warn("Server returned same color. Forcing client-side shift.");
-            // Simple robust shift: just invert or rotate
-            // We can reuse the helper logic or just do a simple math shift
-            // Let's call a simple inline shift since I can't easily add the helper function in this block scope without moving it.
-            // Actually, I can just do a simple bit manipulation here.
             const num = parseInt(generatedColor.slice(1), 16);
             const shifted = (num + 0x333333) % 0xFFFFFF;
             generatedColor = '#' + shifted.toString(16).padStart(6, '0').toUpperCase();
@@ -101,34 +169,39 @@ async function generateColor(options = {}) {
         }
         colorInput.style.borderColor = generatedColor;
 
+        if (spinner) spinner.style.display = 'none';
     } catch (err) {
+        appendColorLog('Error: ' + (err && err.message ? err.message : 'Unknown error'));
         console.warn('Backend unavailable:', err);
-
-        // Fallback: Client-side hash generation
-        // Re-implementing the simple hash here locally since we need it due to backend failure
-        let hash = 0;
-        const seed = query + (step || 0); // Use step as seed for variety
-        for (let i = 0; i < seed.length; i++) {
-            hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        let c = '#';
-        for (let i = 0; i < 3; i++) {
-            const value = (hash >> (i * 8)) & 0xFF;
-            c += ('00' + value.toString(16)).substr(-2);
-        }
-        const fallbackColor = c.toUpperCase();
-
-        // Update UI (Fallback mode)
-        colorPreview.style.backgroundColor = fallbackColor;
+        // Show error message in color rectangle
+        let errorMsg = 'AI analysis failed.';
+        colorPreview.style.backgroundColor = '#27272a';
         colorPreview.classList.add('active');
-        hexCodeSpan.textContent = fallbackColor;
-        currentColor = fallbackColor;
-        downloadBtn.disabled = false;
-        if (similarBtn) {
-            similarBtn.disabled = false;
+        hexCodeSpan.textContent = '';
+        let errorSpan = document.getElementById('colorErrorMsg');
+        if (!errorSpan) {
+            errorSpan = document.createElement('span');
+            errorSpan.id = 'colorErrorMsg';
+            errorSpan.style.position = 'absolute';
+            errorSpan.style.top = '50%';
+            errorSpan.style.left = '50%';
+            errorSpan.style.transform = 'translate(-50%, -50%)';
+            errorSpan.style.background = 'rgba(0,0,0,0.7)';
+            errorSpan.style.color = '#fff';
+            errorSpan.style.fontSize = '1.2rem';
+            errorSpan.style.padding = '1rem 2rem';
+            errorSpan.style.borderRadius = '12px';
+            errorSpan.style.zIndex = '2';
+            errorSpan.style.pointerEvents = 'none';
+            colorPreview.appendChild(errorSpan);
         }
-        colorInput.style.borderColor = fallbackColor;
+        errorSpan.textContent = errorMsg;
+        if (spinner) spinner.style.display = 'none';
+        downloadBtn.disabled = true;
+        if (similarBtn) similarBtn.disabled = true;
+        colorInput.style.borderColor = '#ef4444';
     } finally {
+        if (spinner) spinner.style.display = 'none';
         generateBtn.disabled = false;
         generateBtn.textContent = 'Generate';
     }
