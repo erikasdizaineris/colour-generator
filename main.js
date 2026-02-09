@@ -67,23 +67,8 @@ async function generateColor(options = {}) {
         similarBtn.disabled = true;
     }
 
-    // Determine if this is a raw color query (single word, matches colorNames)
-    let isRawColor = false;
-    if (query) {
-        const tokens = query.toLowerCase().split(/[^a-z]+/).filter(Boolean);
-        const colorNames = [
-            'red','green','blue','yellow','cyan','magenta','white','black','gray','grey','orange','purple','pink','brown','lime','navy','teal','maroon','olive','silver','gold','violet','indigo','turquoise','beige','mint','lavender','coral'
-        ];
-        if (tokens.length === 1 && colorNames.includes(tokens[0])) {
-            isRawColor = true;
-        }
-    }
-
-    if (isRawColor) {
-        appendColorLog('Detected raw color name. Returning exact color.');
-    } else {
-        appendColorLog('Analyzing images and using Gemini AI...');
-    }
+    // Let the backend handle raw color detection and spectrum mapping
+    appendColorLog('Analyzing your query and generating color...');
 
     try {
         appendColorLog('Requesting color from server...');

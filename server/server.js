@@ -59,20 +59,20 @@ function getHashColor(str) {
 // Helper: Basic Color Dictionary with safe Hue Ranges (0-255 scale)
 // Approximate ranges: Red(0/255), Yellow(42), Green(85), Cyan(127), Blue(170), Magenta(213)
 const colorNames = {
-    'red': { hex: '#FF0000', range: [[0, 20], [235, 255]] }, // Red wraps around
+    'red': { hex: '#FF0000', range: [[0, 20], [235, 255]] },
     'green': { hex: '#008000', range: [[60, 110]] },
     'blue': { hex: '#0000FF', range: [[150, 190]] },
     'yellow': { hex: '#FFFF00', range: [[30, 55]] },
     'cyan': { hex: '#00FFFF', range: [[110, 145]] },
     'magenta': { hex: '#FF00FF', range: [[195, 230]] },
-    'white': { hex: '#FFFFFF', range: [[0, 255]] }, // White/Black/Grey are strictly saturation/lightness, but here we allow full hue if they shift
+    'white': { hex: '#FFFFFF', range: [[0, 255]] },
     'black': { hex: '#000000', range: [[0, 255]] },
     'gray': { hex: '#808080', range: [[0, 255]] },
     'grey': { hex: '#808080', range: [[0, 255]] },
     'orange': { hex: '#FFA500', range: [[20, 45]] },
     'purple': { hex: '#800080', range: [[180, 220]] },
     'pink': { hex: '#FFC0CB', range: [[220, 250]] },
-    'brown': { hex: '#A52A2A', range: [[0, 30]] }, // Brown is basically dark orange/red
+    'brown': { hex: '#A52A2A', range: [[0, 30]] },
     'lime': { hex: '#00FF00', range: [[70, 95]] },
     'navy': { hex: '#000080', range: [[150, 180]] },
     'teal': { hex: '#008080', range: [[110, 140]] },
@@ -86,8 +86,81 @@ const colorNames = {
     'beige': { hex: '#F5F5DC', range: [[25, 45]] },
     'mint': { hex: '#98FF98', range: [[90, 120]] },
     'lavender': { hex: '#E6E6FA', range: [[170, 200]] },
-    'coral': { hex: '#FF7F50', range: [[10, 30]] }
+    'coral': { hex: '#FF7F50', range: [[10, 30]] },
+    // Artist colours (examples, can be expanded)
+    'carmine red': { hex: '#960018', range: [[350, 10]] },
+    'alizarin crimson': { hex: '#E32636', range: [[350, 10]] },
+    'vermilion': { hex: '#E34234', range: [[5, 20]] },
+    'cadmium red': { hex: '#E30022', range: [[350, 10]] },
+    'ultramarine blue': { hex: '#3F00FF', range: [[220, 250]] },
+    'cerulean blue': { hex: '#2A52BE', range: [[200, 220]] },
+    'prussian blue': { hex: '#003153', range: [[180, 210]] },
+    'phthalo blue': { hex: '#000F89', range: [[220, 250]] },
+    'cobalt blue': { hex: '#0047AB', range: [[210, 230]] },
+    'viridian': { hex: '#40826D', range: [[120, 160]] },
+    'sap green': { hex: '#507D2A', range: [[80, 110]] },
+    'cadmium yellow': { hex: '#FFF600', range: [[50, 60]] },
+    'yellow ochre': { hex: '#CC7722', range: [[30, 45]] },
+    'raw sienna': { hex: '#D68A59', range: [[20, 40]] },
+    'burnt sienna': { hex: '#E97451', range: [[10, 30]] },
+    'raw umber': { hex: '#826644', range: [[20, 40]] },
+    'burnt umber': { hex: '#8A3324', range: [[10, 30]] },
+    'payne grey': { hex: '#536878', range: [[200, 240]] },
+    'indian yellow': { hex: '#E3A857', range: [[40, 60]] },
+    'quinacridone magenta': { hex: '#8E3A59', range: [[320, 340]] },
+    'permanent rose': { hex: '#E12C6A', range: [[330, 350]] },
+    'dioxazine purple': { hex: '#6A0DAD', range: [[260, 280]] },
+    'pyrrole orange': { hex: '#F76F1C', range: [[20, 40]] },
+    'naples yellow': { hex: '#FADA5E', range: [[45, 55]] },
+    'hooker green': { hex: '#49796B', range: [[100, 140]] },
+    'cerulean': { hex: '#007BA7', range: [[190, 210]] },
+    'manganese blue': { hex: '#1B6F9A', range: [[200, 220]] },
+    'buff titanium': { hex: '#D2C29D', range: [[40, 60]] }
 };
+
+// Helper: Convert HEX to HSL
+function hexToHSL(hex) {
+    hex = hex.replace('#', '');
+    let r = parseInt(hex.substring(0, 2), 16) / 255;
+    let g = parseInt(hex.substring(2, 4), 16) / 255;
+    let b = parseInt(hex.substring(4, 6), 16) / 255;
+    let max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    if (max === min) {
+        h = s = 0;
+    } else {
+        let d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return [h * 360, s * 100, l * 100];
+}
+
+// Helper: Convert HSL to HEX
+function hslToHex(h, s, l) {
+    h = h % 360;
+    s /= 100;
+    l /= 100;
+    let c = (1 - Math.abs(2 * l - 1)) * s;
+    let x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    let m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+    else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+    else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+    else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+    else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+    else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+    r = Math.round((r + m) * 255);
+    g = Math.round((g + m) * 255);
+    b = Math.round((b + m) * 255);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+}
 
 function tokenizeQuery(query) {
     return query
@@ -97,6 +170,16 @@ function tokenizeQuery(query) {
 }
 
 function findRawColorName(query) {
+    // Try to match multi-word color names first (longest match)
+    const lowerQuery = query.toLowerCase();
+    // Sort color names by length descending to match longest first
+    const sortedNames = Object.keys(colorNames).sort((a, b) => b.length - a.length);
+    for (const name of sortedNames) {
+        if (lowerQuery.includes(name)) {
+            return name;
+        }
+    }
+    // Fallback: check tokens for single-word matches
     const tokens = tokenizeQuery(query);
     for (const token of tokens) {
         if (colorNames[token]) return token;
@@ -315,27 +398,45 @@ function shiftHue(hex, degree, ranges = null) {
 }
 
 app.post('/api/generate', async (req, res) => {
-    const { query, previousColor, mode, step = 0 } = req.body;
 
+    const { query, previousColor, mode, step = 0 } = req.body;
     if (typeof query !== 'string') {
         return res.status(400).json({ error: 'Missing query' });
     }
-
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {
         return res.status(400).json({ error: 'Empty query' });
     }
-
     console.log(`[Generate] query="${normalizedQuery}" mode=${mode || 'new'} step=${step}`);
 
-    const isRawOnly = isSingleRawColorQuery(normalizedQuery);
-    const rawColorName = isRawOnly ? findRawColorName(normalizedQuery) : null;
+    // Find the first raw color in the query (even if not single word)
+    const rawColorName = findRawColorName(normalizedQuery);
     const rawColorData = rawColorName ? colorNames[rawColorName] : null;
-    const spectrumColorName = findRawColorName(normalizedQuery);
-    const spectrumRanges = spectrumColorName ? colorNames[spectrumColorName]?.range : null;
+    const spectrumRanges = rawColorName ? colorNames[rawColorName]?.range : null;
+    const isRawOnly = isSingleRawColorQuery(normalizedQuery);
 
-    if (isRawOnly) {
+    // If the query is exactly a raw color, return its hex
+    if (isRawOnly && rawColorData) {
         return res.json({ color: rawColorData.hex, source: 'raw_exact' });
+    }
+
+    // If the query contains a raw color (e.g. 'sunset pink'), restrict to that color's spectrum
+    if (rawColorData) {
+        // Optionally, blend with a random color in the spectrum or just return the base color
+        // For now, return a random hue in the allowed range for that color
+        // (You could make this more sophisticated if needed)
+        const baseHex = rawColorData.hex;
+        let resultHex = baseHex;
+        if (spectrumRanges && spectrumRanges.length > 0) {
+            // Pick a random range and random hue within it
+            const [min, max] = spectrumRanges[Math.floor(Math.random() * spectrumRanges.length)];
+            // Convert baseHex to HSL, set hue to random in range, then back to hex
+            const hsl = hexToHSL(baseHex);
+            const hue255 = Math.floor(Math.random() * (max - min + 1)) + min;
+            hsl[0] = (hue255 / 255) * 360;
+            resultHex = hslToHex(hsl[0], hsl[1], hsl[2]);
+        }
+        return res.json({ color: resultHex, source: 'raw_spectrum' });
     }
 
     const learned = db?.data?.likes
